@@ -8,6 +8,8 @@ set(gammaray_qmlsupport_srcs
   qmlcontextextension.cpp
   qmlcontextmodel.cpp
   qmltypeextension.cpp
+  qmlbindingextension.cpp
+  qmlbindingmodel.cpp
 )
 include_directories(SYSTEM ${Qt5Qml_PRIVATE_INCLUDE_DIRS})
 gammaray_add_plugin(gammaray_qmlsupport JSON gammaray_qmlsupport.json SOURCES ${gammaray_qmlsupport_srcs})
@@ -20,10 +22,12 @@ if(GAMMARAY_BUILD_UI)
     qmlsupportuifactory.cpp
     qmlcontexttab.cpp
     qmltypetab.cpp
+    qmlbindingtab.cpp
   )
   qt4_wrap_ui(gammaray_qmlsupport_ui_srcs
     qmlcontexttab.ui
     qmltypetab.ui
+    qmlbindingtab.ui
   )
   gammaray_add_plugin(gammaray_qmlsupport_ui JSON gammaray_qmlsupport.json SOURCES ${gammaray_qmlsupport_ui_srcs})
   target_link_libraries(gammaray_qmlsupport_ui gammaray_ui)
