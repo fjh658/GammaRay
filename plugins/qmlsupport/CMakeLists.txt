@@ -10,6 +10,7 @@ set(gammaray_qmlsupport_srcs
   qmltypeextension.cpp
   qmlbindingextension.cpp
   qmlbindingmodel.cpp
+  qmlbindingnode.cpp
 )
 include_directories(SYSTEM ${Qt5Qml_PRIVATE_INCLUDE_DIRS})
 gammaray_add_plugin(gammaray_qmlsupport JSON gammaray_qmlsupport.json SOURCES ${gammaray_qmlsupport_srcs})
