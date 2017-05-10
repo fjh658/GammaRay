@@ -74,84 +74,107 @@ private:
     }
 
 private slots:
-    void testTimerCreateDestroy()
+//    void testTimerCreateDestroy()
+//    {
+//        createProbe();
+
+//        auto *model = ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel"));
+//        QVERIFY(model);
+//        ModelTest modelTest(model);
+//        auto baseRowCount = model->rowCount();
+//        QVERIFY(baseRowCount >= 0);
+//        QVERIFY(!indexForName(model, "timer1").isValid());
+
+//        auto t1 = new QTimer;
+//        t1->setObjectName("timer1");
+//        QTest::qWait(1);
+
+//        QCOMPARE(model->rowCount(), baseRowCount + 1);
+//        auto idx = indexForName(model, "timer1");
+//        QVERIFY(idx.isValid());
+//        QCOMPARE(idx.data(TimerModel::ObjectIdRole).value<ObjectId>(), ObjectId(t1));
+
+//        delete t1;
+//        QTest::qWait(1);
+//        QCOMPARE(model->rowCount(), baseRowCount);
+//    }
+
+//    void testTimerActivation()
+//    {
+//        createProbe();
+
+//        auto *model = ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel"));
+//        QVERIFY(model);
+//        ModelTest modelTest(model);
+
+//        auto t1 = new QTimer;
+//        t1->setObjectName("timer1");
+//        t1->setInterval(10);
+//        t1->setSingleShot(true);
+//        QTest::qWait(1);
+
+//        auto idx = indexForName(model, "timer1");
+//        QVERIFY(idx.isValid());
+//        // TODO verify data
+
+//        QSignalSpy dataChangeSpy(model, SIGNAL(dataChanged(QModelIndex,QModelIndex)));
+//        QVERIFY(dataChangeSpy.isValid());
+//        t1->start();
+//        QTest::qWait(10 * 1000); // there's a 5sec throttle on dataChanged
+
+//        // TODO verify data
+//        QVERIFY(dataChangeSpy.size() > 0);
+//        QVERIFY(dataChangeSpy.size() < 5);
+
+//        delete t1;
+//        QTest::qWait(1);
+//    }
+
+//    void testTimerEvent()
+//    {
+//        createProbe();
+
+//        auto *model = ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel"));
+//        QVERIFY(model);
+//        auto idx = indexForName(model, "testObject");
+//        QVERIFY(!idx.isValid());
+
+//        setObjectName("testObject");
+//        auto timerId = startTimer(10);
+//        QTest::qWait(100);
+
+//        idx = indexForName(model, "testObject");
+//        QVERIFY(idx.isValid());
+//        QEXPECT_FAIL("", "still needs to be investigated", Continue);
+//        QCOMPARE(idx.data(TimerModel::ObjectIdRole).value<ObjectId>(), ObjectId(this));
+//        idx = idx.sibling(idx.row(), 6);
+//        QVERIFY(idx.isValid());
+//        QCOMPARE(idx.data().toInt(), timerId);
+
+//        killTimer(timerId);
+//    }
+
+    void testTimerMultithreading()
     {
         createProbe();
 
         auto *model = ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel"));
         QVERIFY(model);
-        ModelTest modelTest(model);
-        auto baseRowCount = model->rowCount();
-        QVERIFY(baseRowCount >= 0);
-        QVERIFY(!indexForName(model, "timer1").isValid());
 
-        auto t1 = new QTimer;
-        t1->setObjectName("timer1");
-        QTest::qWait(1);
+        QThread thread;
 
-        QCOMPARE(model->rowCount(), baseRowCount + 1);
-        auto idx = indexForName(model, "timer1");
-        QVERIFY(idx.isValid());
-        QCOMPARE(idx.data(TimerModel::ObjectIdRole).value<ObjectId>(), ObjectId(t1));
+        QSharedPointer<QTimer> timer(new QTimer);
+        timer->setInterval(100);
+        timer->moveToThread(&thread);
 
-        delete t1;
-        QTest::qWait(1);
-        QCOMPARE(model->rowCount(), baseRowCount);
-    }
+        timer->connect(&thread, SIGNAL(started()), SLOT(start()));
+        QTimer::singleShot(6000, timer.data(), [&]() {
+            timer->stop();
+            thread.quit();
+        });
 
-    void testTimerActivation()
-    {
-        createProbe();
-
-        auto *model = ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel"));
-        QVERIFY(model);
-        ModelTest modelTest(model);
-
-        auto t1 = new QTimer;
-        t1->setObjectName("timer1");
-        t1->setInterval(10);
-        t1->setSingleShot(true);
-        QTest::qWait(1);
-
-        auto idx = indexForName(model, "timer1");
-        QVERIFY(idx.isValid());
-        // TODO verify data
-
-        QSignalSpy dataChangeSpy(model, SIGNAL(dataChanged(QModelIndex,QModelIndex)));
-        QVERIFY(dataChangeSpy.isValid());
-        t1->start();
-        QTest::qWait(10 * 1000); // there's a 5sec throttle on dataChanged
-
-        // TODO verify data
-        QVERIFY(dataChangeSpy.size() > 0);
-        QVERIFY(dataChangeSpy.size() < 5);
-
-        delete t1;
-        QTest::qWait(1);
-    }
-
-    void testTimerEvent()
-    {
-        createProbe();
-
-        auto *model = ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel"));
-        QVERIFY(model);
-        auto idx = indexForName(model, "testObject");
-        QVERIFY(!idx.isValid());
-
-        setObjectName("testObject");
-        auto timerId = startTimer(10);
-        QTest::qWait(100);
-
-        idx = indexForName(model, "testObject");
-        QVERIFY(idx.isValid());
-        QEXPECT_FAIL("", "still needs to be investigated", Continue);
-        QCOMPARE(idx.data(TimerModel::ObjectIdRole).value<ObjectId>(), ObjectId(this));
-        idx = idx.sibling(idx.row(), 6);
-        QVERIFY(idx.isValid());
-        QCOMPARE(idx.data().toInt(), timerId);
-
-        killTimer(timerId);
+        thread.start();
+        QVERIFY(thread.wait(8000));
     }
 };
 
