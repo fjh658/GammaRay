@@ -56,6 +56,7 @@ class QThread;
 class QPoint;
 class QTimer;
 class QMutex;
+class QMutexLocker;
 QT_END_NAMESPACE
 
 #if USE_BACKWARD_CPP
@@ -129,6 +130,7 @@ public:
      * and to access it safely afterwards.
      */
     static QMutex *objectLock();
+    static QSharedPointer<QMutexLocker> objectLocker(QObject *object);
 
     /**
      * check whether @p obj is still valid
