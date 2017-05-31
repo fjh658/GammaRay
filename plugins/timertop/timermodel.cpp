@@ -192,6 +192,9 @@ const TimerIdInfo *TimerModel::findTimerInfo(const QModelIndex &index) const
 
         if (it != m_timersInfo.end())
             return &it.value();
+    } else {
+        if (index.row() < m_sourceModel->rowCount() + m_freeTimersInfo.count())
+            return &m_freeTimersInfo[index.row() - m_sourceModel->rowCount()];
     }
 
     return nullptr;
@@ -201,6 +204,8 @@ void TimerModel::triggerPushChanges()
 {
     if (!TimerModel::isInitialized())
         return;
+
+    QMutexLocker locker(Probe::objectLock());
 
     if (!s_timerModel->m_pushTimer) {
         s_timerModel->m_pushTimer = QSharedPointer<QTimer>(new QTimer);
@@ -266,7 +271,7 @@ void TimerModel::preSignalActivate(QObject *caller, int methodIndex)
     // We are in the thread of the caller emmiting the signal
     Q_ASSERT(TimerModel::isInitialized());
 
-    const auto locker = Probe::objectLocker(caller);
+    QMutexLocker locker(Probe::objectLock());
     const bool isQTimer = qobject_cast<QTimer *>(caller) != nullptr;
     const bool isQQmlTimer = caller->inherits(s_qmlTimerClassName);
 
@@ -292,7 +297,7 @@ void TimerModel::postSignalActivate(QObject *caller, int methodIndex)
     Q_UNUSED(methodIndex);
     Q_ASSERT(TimerModel::isInitialized());
 
-    const auto locker = Probe::objectLocker(caller);
+    QMutexLocker locker(Probe::objectLock());
     const TimerId id(caller);
     auto it = s_gatheredTimersData.find(id);
 
@@ -310,10 +315,10 @@ void TimerModel::postSignalActivate(QObject *caller, int methodIndex)
         return;
     }
 
-    const TimeoutEvent event(QTime::currentTime(), it.value().functionCallTimer.stop());
+    const TimeoutEvent timeoutEvent(QTime::currentTime(), it.value().functionCallTimer.stop());
 
     it.value().update(id);
-    it.value().addEvent(event);
+    it.value().addEvent(timeoutEvent);
 
     triggerPushChanges();
 }
@@ -351,6 +356,8 @@ QModelIndex TimerModel::index(int row, int column, const QModelIndex &parent) co
             const QModelIndex sourceIndex = m_sourceModel->index(row, 0);
             QObject *const timerObject = sourceIndex.data(ObjectModel::ObjectRole).value<QObject *>();
             return createIndex(row, column, timerObject);
+        } else {
+            return createIndex(row, column, row - m_sourceModel->rowCount());
         }
 
         Q_UNREACHABLE();
@@ -370,7 +377,7 @@ int TimerModel::rowCount(const QModelIndex &parent) const
     Q_UNUSED(parent);
     if (!m_sourceModel || parent.isValid())
         return 0;
-    return m_sourceModel->rowCount();
+    return m_sourceModel->rowCount() + m_freeTimersInfo.count();
 }
 
 QVariant TimerModel::data(const QModelIndex &index, int role) const
@@ -448,30 +455,105 @@ QMap<int, QVariant> TimerModel::itemData(const QModelIndex &index) const
 
 bool TimerModel::eventFilter(QObject *watched, QEvent *event)
 {
+    // We are always in the GUI thread here, so we only receive timers of this thread
+    if (event->type() == QEvent::Timer) {
+        const auto locker = Probe::objectLocker(watched);
+        const QTimerEvent *const timerEvent = static_cast<QTimerEvent *>(event);
+        Q_ASSERT(timerEvent->timerId() != -1);
+        const QTimer *const timer = qobject_cast<QTimer *>(watched);
+
+        // If there is a QTimer associated with this timer ID, don't handle it here, it will be handled
+        // by the signal hooks preSignalActivate/postSignalActivate.
+        if (timer && timer->timerId() == timerEvent->timerId()) {
+            return QAbstractTableModel::eventFilter(watched, event);
+        }
+
+        const TimerId id(timerEvent->timerId());
+        auto it = s_gatheredTimersData.find(id);
+
+        if (it == s_gatheredTimersData.end()) {
+            it = s_gatheredTimersData.insert(id, TimerIdData());
+        }
+
+        const TimeoutEvent timeoutEvent(QTime::currentTime(), -1);
+
+        it.value().update(id, watched);
+        it.value().addEvent(timeoutEvent);
+
+        triggerPushChanges();
+    }
+
     return QAbstractTableModel::eventFilter(watched, event);
 }
 
 void TimerModel::applyChanges(const GammaRay::TimerIdInfoHash &changes)
 {
-    QVector<QPair<int, int>> ranges; // pair of first/last
+    QSet<TimerId> handledIds;
+    QVector<QPair<int, int>> dataChangedRanges; // pair of first/last
 
-    for (int i = 0; i < rowCount(); ++i) {
+    // QQmlTimer / QTimer
+    for (int i = 0; i < m_sourceModel->rowCount(); ++i) {
         const QModelIndex idx = index(i, 0);
         const TimerId id = TimerId(static_cast<QObject *>(idx.internalPointer()));
-        auto it = changes.constFind(id);
+        const auto cit = changes.constFind(id);
+        auto it = m_timersInfo.find(id);
 
-        if (it != changes.constEnd()) {
-            m_timersInfo[id] = it.value();
+        if (it == m_timersInfo.end()) {
+            it = m_timersInfo.insert(id, TimerIdInfo());
+        }
 
-            if (ranges.isEmpty() || ranges.last().second != i - 1) {
-                ranges << qMakePair(i, i);
+        if (cit != changes.constEnd()) {
+            handledIds << id;
+            it.value() = cit.value();
+
+            if (dataChangedRanges.isEmpty() || dataChangedRanges.last().second != i - 1) {
+                dataChangedRanges << qMakePair(i, i);
             } else {
-                ranges.last().second = i;
+                dataChangedRanges.last().second = i;
             }
         }
     }
 
-    foreach (const auto &range, ranges) {
+    // Existing free timers
+    for (auto it = m_freeTimersInfo.begin(), end = m_freeTimersInfo.end(); it != end; ++it) {
+        const TimerId id((*it).timerId);
+        const auto cit = changes.constFind(id);
+
+        if (cit != changes.constEnd()) {
+            const int i = m_sourceModel->rowCount() + std::distance(m_freeTimersInfo.begin(), it);
+            handledIds << id;
+            (*it) = cit.value();
+
+            if (dataChangedRanges.isEmpty() || dataChangedRanges.last().second != i - 1) {
+                dataChangedRanges << qMakePair(i, i);
+            } else {
+                dataChangedRanges.last().second = i;
+            }
+        }
+    }
+
+    // Remaining new free timers
+    int inserted = 0;
+    for (auto it = changes.constBegin(), end = changes.constEnd(); it != end; ++it) {
+        if (handledIds.contains(it.key()))
+            continue;
+
+        m_freeTimersInfo << it.value();
+        ++inserted;
+    }
+
+    // Inform model about new rows
+    if (inserted > 0) {
+        const int first = m_sourceModel->rowCount() + m_freeTimersInfo.count() - inserted;
+        const int last = m_sourceModel->rowCount() + m_freeTimersInfo.count() - 1;
+
+        beginInsertRows(QModelIndex(), first, last);
+        // We already inserted at end
+        endInsertRows();
+    }
+
+    // Inform model about data changes
+    foreach (const auto &range, dataChangedRanges) {
         emit dataChanged(index(range.first, 0), index(range.second, columnCount() - 1));
     }
 }

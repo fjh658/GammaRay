@@ -73,7 +73,7 @@ TimerId::TimerId(QObject *timer)
 {
     Q_ASSERT(m_timer);
 
-    if (QTimer *t = qobject_cast<QTimer *>(timer)) {
+    if (qobject_cast<QTimer *>(timer)) {
         m_type = QTimerType;
     }
 }

@@ -104,6 +104,7 @@ private:
     // model data
     QAbstractItemModel *m_sourceModel;
     mutable TimerIdInfoHash m_timersInfo;
+    QVector<TimerIdInfo> m_freeTimersInfo;
 
     QMetaMethod m_applyChangesMethod;
 
