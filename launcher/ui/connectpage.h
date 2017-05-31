@@ -68,6 +68,7 @@ private:
     void handlePortString(QString &stillToParse, bool &correctSoFar);
 
     void showStandardPortAssumedWarning();
+    void clearWarnings();
 
     QScopedPointer<Ui::ConnectPage> ui;
     QUrl m_currentUrl;
