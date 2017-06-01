@@ -47,13 +47,10 @@ using namespace GammaRay;
 // TODO list for timer plugin
 //
 
-// BUG: Some QTimers appear as free timers
 // BUG: QTimeLine class name not shown
-// BUG: No thread safety yet
 // Related: Protect against timer deletion
 // BUG: Only top-level timers are shown (bug in probe)
 
-// ! Delete old free timers
 // ! Wakeup time for QTimers
 // ! Add button to view object info
 // ! Test timer added/removed at runtime

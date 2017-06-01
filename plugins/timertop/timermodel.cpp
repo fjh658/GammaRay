@@ -490,6 +490,7 @@ void TimerModel::applyChanges(const GammaRay::TimerIdInfoHash &changes)
 {
     QSet<TimerId> handledIds;
     QVector<QPair<int, int>> dataChangedRanges; // pair of first/last
+    QSet<int> qtimerIds;
 
     // QQmlTimer / QTimer
     for (int i = 0; i < m_sourceModel->rowCount(); ++i) {
@@ -511,6 +512,11 @@ void TimerModel::applyChanges(const GammaRay::TimerIdInfoHash &changes)
             } else {
                 dataChangedRanges.last().second = i;
             }
+        }
+
+        // Remember QTimer's id for later
+        if (id.type() == TimerId::QTimerType && it.value().timerId != -1) {
+            qtimerIds << it.value().timerId;
         }
     }
 
@@ -535,6 +541,12 @@ void TimerModel::applyChanges(const GammaRay::TimerIdInfoHash &changes)
     // Remaining new free timers
     int inserted = 0;
     for (auto it = changes.constBegin(), end = changes.constEnd(); it != end; ++it) {
+        // If a TimerId of type TimerId::QObjectType just changed then this free timer id is still valid,
+        // remove it from qtimerIds.
+        if (it.key().type() == TimerId::QObjectType && qtimerIds.contains(it.key().timerId())) {
+            qtimerIds.remove(it.key().timerId());
+        }
+
         if (handledIds.contains(it.key()))
             continue;
 
@@ -555,6 +567,36 @@ void TimerModel::applyChanges(const GammaRay::TimerIdInfoHash &changes)
     // Inform model about data changes
     foreach (const auto &range, dataChangedRanges) {
         emit dataChanged(index(range.first, 0), index(range.second, columnCount() - 1));
+    }
+
+    // Check for invalid free timers
+    // Invalid QQmlTimer/QTimer are handled in the source model begin remove rows slot already.
+    // We considere free timers invalid if an id is used by a qtimer already and free timer id
+    // is not part of this changes.
+    QVector<QPair<int, int>> removeRowsRanges; // pair of first/last
+
+    for (int row = 0; row < m_freeTimersInfo.count(); ++row) {
+        const TimerIdInfo &it = m_freeTimersInfo[row];
+
+        // This is an invalid free timer
+        if (qtimerIds.contains(it.timerId)) {
+            const int i = m_sourceModel->rowCount() + row;
+
+            if (removeRowsRanges.isEmpty() || removeRowsRanges.last().second != i - 1) {
+                removeRowsRanges << qMakePair(i, i);
+            } else {
+                removeRowsRanges.last().second = i;
+            }
+        }
+    }
+
+    // Inform model about rows removal
+    for (int i = removeRowsRanges.count() -1; i >= 0; --i) {
+        const auto &range = removeRowsRanges[i];
+
+        beginRemoveRows(QModelIndex(), range.first, range.second);
+        m_freeTimersInfo.remove(range.first - m_sourceModel->rowCount(), range.second - range.first + 1);
+        endRemoveRows();
     }
 }
 
