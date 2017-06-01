@@ -114,7 +114,6 @@ private slots:
         QTest::addColumn<bool>("isValid", nullptr);
 
         QTest::newRow("localhost") << "localhost" << true;
-        QTest::newRow("horsebubblewrap-plan") << "horsebubblewrap-plan" << false; //please dont exist ;)
     }
 
     void testHostNames()
