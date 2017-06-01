@@ -53,15 +53,13 @@ ConnectPage::ConnectPage(QWidget *parent)
     , m_localPrefix("local://")
     , m_tcpPrefix("tcp://")
 {
+    ui->setupUi(this);
 #if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
     m_implicitPortWarningSign = new QAction(QIcon(":/launcher/warning.png"), "No port given, will use 11732", this);
     m_fileIsNotASocketWarning = new QAction(qApp->style()->standardIcon(QStyle::SP_MessageBoxCritical)
                                             , "File is not a socket"
                                             , this);
 #endif
-
-    ui->setupUi(this);
-
     connect(ui->host, SIGNAL(textChanged(QString)), SLOT(validateHostAddress(const QString&)));
     connect(ui->host, SIGNAL(textChanged(QString)), SIGNAL(updateButtonState()));
 
@@ -86,6 +84,7 @@ void ConnectPage::validateHostAddress(const QString &address)
     QPalette palette;
     palette.setColor(QPalette::Text,Qt::red);
     ui->host->setPalette(palette);
+    clearWarnings();
 
     handleLocalAddress(stillToParse, correctSoFar);
     handleIPAddress(stillToParse, correctSoFar);
@@ -111,7 +110,7 @@ void ConnectPage::handleLocalAddress(QString &stillToParse, bool &correctSoFar)
         QT_STATBUF statbuf;
         QT_STAT(QFile::encodeName(localSocketFile.filePath()), &statbuf);
         if(!S_ISSOCK(statbuf.st_mode)) {
-            ui->host->addAction(m_fileIsNotASocketWarning, QLineEdit::TrailingPosition);
+            showFileIsNotSocketWarning();
         } else {
             stillToParse = "";
             correctSoFar = true;
@@ -192,6 +191,13 @@ void ConnectPage::showStandardPortAssumedWarning()
 {
 #if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
     ui->host->addAction(m_implicitPortWarningSign, QLineEdit::TrailingPosition);
+#endif
+}
+
+void ConnectPage::showFileIsNotSocketWarning()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+    ui->host->addAction(m_fileIsNotASocketWarning, QLineEdit::TrailingPosition);
 #endif
 }
 
