@@ -84,8 +84,9 @@ struct TimerIdInfo
     { }
 
     TimerIdInfo(const TimerId &id, QObject *receiver = nullptr);
+    virtual ~TimerIdInfo() { }
 
-    void update(const TimerId &id, QObject *receiver = nullptr);
+    virtual void update(const TimerId &id, QObject *receiver = nullptr);
 
     int timerId;
     int totalWakeups;

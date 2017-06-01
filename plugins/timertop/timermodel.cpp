@@ -44,7 +44,7 @@
 #include <iostream>
 
 namespace GammaRay {
-class TimerIdData;
+struct TimerIdData;
 }
 
 using namespace GammaRay;
@@ -68,17 +68,33 @@ struct TimeoutEvent
     int executionTime;
 };
 
-class TimerIdData : public TimerIdInfo
+struct TimerIdData : TimerIdInfo
 {
-public:
+    TimerIdData()
+        : totalWakeupsEvents(0)
+        , lastReceiver(0)
+    { }
     using TimerIdInfo::TimerIdInfo;
 
-    int totalWakeups(TimerId::Type type) const {
+    void update(const TimerId &id, QObject *receiver = nullptr) override
+    {
+        // If the receiver changed, the timer was stopped / restarted and is no longer the same timer.
+        if (lastReceiver != quintptr(receiver)) {
+            clearHistory();
+        }
+
+        TimerIdInfo::update(id, receiver);
+        lastReceiver = quintptr(receiver);
+    }
+
+    int totalWakeups(TimerId::Type type) const
+    {
         Q_UNUSED(type);
         return totalWakeupsEvents;
     }
 
-    QString wakeupsPerSec(TimerId::Type type) const {
+    QString wakeupsPerSec(TimerId::Type type) const
+    {
         Q_UNUSED(type);
 
         int totalWakeups = 0;
@@ -103,7 +119,8 @@ public:
         return QStringLiteral("0");
     }
 
-    QString timePerWakeup(TimerId::Type type) const {
+    QString timePerWakeup(TimerId::Type type) const
+    {
         if (type == TimerId::QObjectType)
             return QStringLiteral("N/A");
 
@@ -122,7 +139,8 @@ public:
         return QStringLiteral("N/A");
     }
 
-    QString maxWakeupTime(TimerId::Type type) const {
+    QString maxWakeupTime(TimerId::Type type) const
+    {
         if (type == TimerId::QObjectType)
             return QStringLiteral("N/A");
 
@@ -135,7 +153,8 @@ public:
         return QString::number(max);
     }
 
-    void addEvent(const GammaRay::TimeoutEvent &event) {
+    void addEvent(const GammaRay::TimeoutEvent &event)
+    {
         timeoutEvents.append(event);
         if (timeoutEvents.size() > s_maxTimeoutEvents)
             timeoutEvents.removeFirst();
@@ -143,7 +162,18 @@ public:
         changed = true;
     }
 
-    TimerIdInfo &toInfo(TimerId::Type type) {
+    void clearHistory()
+    {
+        totalWakeupsEvents = 0;
+        if (functionCallTimer.active())
+            functionCallTimer.stop();
+        timeoutEvents.clear();
+        lastReceiver = 0;
+        changed = true;
+    }
+
+    TimerIdInfo &toInfo(TimerId::Type type)
+    {
         TimerIdInfo::totalWakeups =  TimerIdData::totalWakeups(type);
         TimerIdInfo::wakeupsPerSec = TimerIdData::wakeupsPerSec(type);
         TimerIdInfo::timePerWakeup = TimerIdData::timePerWakeup(type);
@@ -154,6 +184,7 @@ public:
     int totalWakeupsEvents;
     FunctionCallTimer functionCallTimer;
     QList<TimeoutEvent> timeoutEvents;
+    quintptr lastReceiver; // free timers only
 
     bool changed;
 };
