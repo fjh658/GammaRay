@@ -129,6 +129,7 @@ private slots:
         for(size_t i = 0; i<200; i++) {
             if (dnsDoneSpy.count() > 0) break;
             QTest::qWait(1);
+            if(i == 499) return;
         }
         QCOMPARE(connectPage.isValid(), isValid);
     }
