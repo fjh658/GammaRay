@@ -44,6 +44,7 @@ namespace GammaRay {
 class TimerModel : public QAbstractTableModel
 {
     Q_OBJECT
+    friend class FreeTimerFilter;
 public:
     virtual ~TimerModel();
 
@@ -82,6 +83,9 @@ public:
     QMap<int, QVariant> itemData(const QModelIndex &index) const override;
 
     bool eventFilter(QObject *watched, QEvent *event) override;
+
+public slots:
+    void objectCreated(QObject* object);
 
 private slots:
     void applyChanges(const GammaRay::TimerIdInfoHash &changes);

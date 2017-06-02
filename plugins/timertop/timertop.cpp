@@ -29,7 +29,7 @@
 #include "timertop.h"
 #include "timermodel.h"
 
-#include <core/probeinterface.h>
+#include <core/probe.h>
 #include <core/objecttypefilterproxymodel.h>
 #include <core/signalspycallbackset.h>
 
@@ -39,7 +39,7 @@
 #include <QCoreApplication>
 #include <QItemSelectionModel>
 #include <QtPlugin>
-#include <QThread>
+#include <QMutexLocker>
 
 using namespace GammaRay;
 
@@ -125,6 +125,18 @@ TimerTop::TimerTop(ProbeInterface *probe, QObject *parent)
     m_selectionModel = ObjectBroker::selectionModel(TimerModel::instance());
 
     connect(probe->probe(), SIGNAL(objectSelected(QObject*,QPoint)), this, SLOT(objectSelected(QObject*)));
+    connect(probe->probe(), SIGNAL(objectCreated(QObject*)), TimerModel::instance(), SLOT(objectCreated(QObject*)));
+
+    QTimer::singleShot(0, TimerModel::instance(), [probe]() {
+        QMutexLocker locker(Probe::objectLock());
+        auto objectModel = probe->objectListModel();
+
+        for (int i = 0; i < objectModel->rowCount(); ++i) {
+            const auto index = objectModel->index(i, 0);
+            QObject *object = index.data(ObjectModel::ObjectRole).value<QObject *>();
+            TimerModel::instance()->objectCreated(object);
+        }
+    });
 }
 
 void TimerTop::objectSelected(QObject* obj)

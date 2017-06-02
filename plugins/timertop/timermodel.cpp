@@ -40,6 +40,7 @@
 #include <QTimer>
 #include <QThread>
 #include <QCoreApplication>
+#include <QAbstractEventDispatcher>
 
 #include <iostream>
 
@@ -52,6 +53,7 @@ using namespace std;
 
 static TimerModel *s_timerModel = nullptr;
 static const char s_qmlTimerClassName[] = "QQmlTimer";
+static const char s_gammarayFilterProperty[] = "GammaRayFreeTimerFilter";
 static QHash<TimerId, TimerIdData> s_gatheredTimersData;
 static const int s_maxTimeoutEvents = 1000;
 static const int s_maxTimeSpan = 10000;
@@ -187,6 +189,49 @@ struct TimerIdData : TimerIdInfo
     quintptr lastReceiver; // free timers only
 
     bool changed;
+};
+
+class FreeTimerFilter : public QObject
+{
+public:
+    using QObject::QObject;
+
+    static void timerEventFilter(QObject *watched, QEvent *event)
+    {
+        QMutexLocker locker(Probe::objectLock());
+        const QTimerEvent *const timerEvent = static_cast<QTimerEvent *>(event);
+        Q_ASSERT(timerEvent->timerId() != -1);
+        const QTimer *const timer = qobject_cast<QTimer *>(watched);
+
+        // If there is a QTimer associated with this timer ID, don't handle it here, it will be handled
+        // by the signal hooks preSignalActivate/postSignalActivate.
+        if (timer && timer->timerId() == timerEvent->timerId()) {
+            return;
+        }
+
+        const TimerId id(timerEvent->timerId());
+        auto it = s_gatheredTimersData.find(id);
+
+        if (it == s_gatheredTimersData.end()) {
+            it = s_gatheredTimersData.insert(id, TimerIdData());
+        }
+
+        const TimeoutEvent timeoutEvent(QTime::currentTime(), -1);
+
+        it.value().update(id, watched);
+        it.value().addEvent(timeoutEvent);
+
+        TimerModel::triggerPushChanges();
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::Timer) {
+            FreeTimerFilter::timerEventFilter(watched, event);
+        }
+
+        return QObject::eventFilter(watched, event);
+    }
 };
 }
 
@@ -486,35 +531,33 @@ QMap<int, QVariant> TimerModel::itemData(const QModelIndex &index) const
 
 bool TimerModel::eventFilter(QObject *watched, QEvent *event)
 {
-    // We are always in the GUI thread here, so we only receive timers of this thread
     if (event->type() == QEvent::Timer) {
-        const auto locker = Probe::objectLocker(watched);
-        const QTimerEvent *const timerEvent = static_cast<QTimerEvent *>(event);
-        Q_ASSERT(timerEvent->timerId() != -1);
-        const QTimer *const timer = qobject_cast<QTimer *>(watched);
-
-        // If there is a QTimer associated with this timer ID, don't handle it here, it will be handled
-        // by the signal hooks preSignalActivate/postSignalActivate.
-        if (timer && timer->timerId() == timerEvent->timerId()) {
-            return QAbstractTableModel::eventFilter(watched, event);
-        }
-
-        const TimerId id(timerEvent->timerId());
-        auto it = s_gatheredTimersData.find(id);
-
-        if (it == s_gatheredTimersData.end()) {
-            it = s_gatheredTimersData.insert(id, TimerIdData());
-        }
-
-        const TimeoutEvent timeoutEvent(QTime::currentTime(), -1);
-
-        it.value().update(id, watched);
-        it.value().addEvent(timeoutEvent);
-
-        triggerPushChanges();
+        FreeTimerFilter::timerEventFilter(watched, event);
     }
 
     return QAbstractTableModel::eventFilter(watched, event);
+}
+
+void TimerModel::objectCreated(QObject *object)
+{
+    // The probe object lock is (or should if called manually) already hold at this point
+    if (QThread *thread = qobject_cast<QThread*>(object)) {
+//        if (QAbstractEventDispatcher *dispatcher = QAbstractEventDispatcher::instance(thread)) {
+//            FreeTimerFilter *filter = new FreeTimerFilter;
+//            filter->moveToThread(thread);
+//            dispatcher->setProperty(s_gammarayFilterProperty, QVariant::fromValue(filter));
+//            dispatcher->installEventFilter(filter);
+//            connect(dispatcher, SIGNAL(destroyed(QObject*)), filter, SLOT(deleteLater()));
+//        }
+
+        if (!thread->property(s_gammarayFilterProperty).isValid()) {
+            FreeTimerFilter *filter = new FreeTimerFilter;
+            filter->moveToThread(thread);
+            thread->setProperty(s_gammarayFilterProperty, QVariant::fromValue(filter));
+            thread->installEventFilter(filter);
+            connect(thread, SIGNAL(destroyed(QObject*)), filter, SLOT(deleteLater()));
+        }
+    }
 }
 
 void TimerModel::applyChanges(const GammaRay::TimerIdInfoHash &changes)
