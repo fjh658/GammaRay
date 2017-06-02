@@ -85,6 +85,7 @@ public:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 public slots:
+    void clearHistory();
     void objectCreated(QObject* object);
 
 private slots:

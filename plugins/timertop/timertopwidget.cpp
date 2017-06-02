@@ -29,6 +29,7 @@
 #include "timertopwidget.h"
 #include "ui_timertopwidget.h"
 #include "timermodel.h"
+#include "timertopclient.h"
 
 #include <ui/contextmenuextension.h>
 #include <ui/searchlinecontroller.h>
@@ -41,13 +42,22 @@
 
 using namespace GammaRay;
 
+static QObject *createTimerTopClient(const QString & /*name*/, QObject *parent)
+{
+    return new TimerTopClient(parent);
+}
+
 TimerTopWidget::TimerTopWidget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::TimerTopWidget)
     , m_stateManager(this)
-    , m_updateTimer(new QTimer(this))
 {
     ui->setupUi(this);
+
+    ObjectBroker::registerClientObjectFactoryCallback<TimerTopInterface *>(
+        createTimerTopClient);
+
+    m_interface = ObjectBroker::object<TimerTopInterface *>();
 
     ui->timerView->header()->setObjectName("timerViewHeader");
     ui->timerView->setDeferredResizeMode(0, QHeaderView::Stretch);
@@ -57,6 +67,7 @@ TimerTopWidget::TimerTopWidget(QWidget *parent)
     ui->timerView->setDeferredResizeMode(4, QHeaderView::ResizeToContents);
     ui->timerView->setDeferredResizeMode(5, QHeaderView::ResizeToContents);
     connect(ui->timerView, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(contextMenu(QPoint)));
+    connect(ui->clearTimers, SIGNAL(clicked()), m_interface, SLOT(clearHistory()));
 
     auto * const sortModel = new QSortFilterProxyModel(this);
     sortModel->setSourceModel(ObjectBroker::model(QStringLiteral("com.kdab.GammaRay.TimerModel")));
