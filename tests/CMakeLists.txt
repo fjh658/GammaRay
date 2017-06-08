@@ -426,6 +426,14 @@ add_executable(quickinspectortest ${quickinspectortest_srcs})
 target_include_directories(quickinspectortest SYSTEM PRIVATE ${Qt5Quick_PRIVATE_INCLUDE_DIRS})
 target_link_libraries(quickinspectortest gammaray_core Qt5::Test Qt5::Quick)
 add_test(NAME quickinspectortest COMMAND quickinspectortest)
+
+set(quickinspectorbench_srcs
+  quickinspectorbench.cpp
+  ../plugins/quickinspector/quickitemmodel.cpp
+)
+add_executable(quickinspectorbench ${quickinspectorbench_srcs})
+target_link_libraries(quickinspectorbench gammaray_core Qt5::Test Qt5::Quick)
+add_test(NAME quickinspectorbench COMMAND quickinspectorbench)
 endif()
 
 ### ToolManager test
