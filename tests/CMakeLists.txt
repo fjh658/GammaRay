@@ -409,6 +409,22 @@ if(Qt5Quick_FOUND)
   add_test(NAME qmlsupporttest COMMAND qmlsupporttest)
 endif()
 
+### Binding Inspector
+
+if(Qt5Quick_FOUND AND NOT Qt5Core_VERSION_MINOR LESS 4) # requires QHooks
+  add_executable(bindinginspectortest
+    bindinginspectortest.cpp
+    ../probe/probecreator.cpp
+    ../probe/hooks.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/qmlsupport/qmlbindingmodel.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/qmlsupport/qmlbindingnode.cpp
+    ${CMAKE_SOURCE_DIR}/3rdparty/qt/modeltest.cpp
+  )
+  target_include_directories(bindinginspectortest SYSTEM PRIVATE ${Qt5Quick_PRIVATE_INCLUDE_DIRS})
+  target_link_libraries(bindinginspectortest gammaray_core Qt5::Quick Qt5::Test)
+  add_test(NAME bindinginspectortest COMMAND bindinginspectortest)
+endif()
+
 ### Quick inspector
 
 if(Qt5Quick_FOUND AND NOT Qt5Core_VERSION_MINOR LESS 4) # requires QHooks
